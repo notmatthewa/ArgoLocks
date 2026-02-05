@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, HTTPException
 
 from argolocks.models import (
@@ -9,6 +11,8 @@ from argolocks.models import (
 from argolocks.slack_client import is_prod_app, send_approval_message
 from argolocks.store import create_lock, get_lock
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/v1/locks", tags=["locks"])
 
 
@@ -18,8 +22,10 @@ def create(req: CreateLockRequest):
         raise HTTPException(400, "Only prod apps require approval locks")
     lock = Lock(app_name=req.app_name, triggered_by=req.triggered_by)
     create_lock(lock)
-    ts = send_approval_message(lock)
-    lock.slack_message_ts = ts
+    try:
+        lock.slack_message_ts = send_approval_message(lock)
+    except Exception:
+        logger.exception("Failed to send Slack message for lock %s", lock.lock_id)
     return CreateLockResponse(
         lock_id=lock.lock_id, status=lock.status, app_name=lock.app_name
     )
