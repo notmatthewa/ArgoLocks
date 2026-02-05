@@ -2,7 +2,7 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    model_config = {"env_prefix": "ARGOLOCKS_"}
+    model_config = {"env_prefix": "ARGOLOCK_"}
 
     slack_bot_token: str = ""
     slack_channel_id: str = ""
