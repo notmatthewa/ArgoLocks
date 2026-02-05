@@ -1,0 +1,52 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  generateName: argolocks-gate-
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: gate
+          image: curlimages/curl:latest
+          env:
+            - name: ARGOLOCKS_URL
+              value: "http://argolocks.argolocks.svc.cluster.local:8080"
+            - name: APP_NAME
+              value: "sample-app-prod"
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              LOCK_ID=$(curl -sf -X POST "$ARGOLOCKS_URL/api/v1/locks" \
+                -H "Content-Type: application/json" \
+                -d "{\"app_name\":\"$APP_NAME\",\"triggered_by\":\"argocd\"}" \
+                | sed -n 's/.*"lock_id":"\([^"]*\)".*/\1/p')
+
+              if [ -z "$LOCK_ID" ]; then
+                echo "Failed to create lock"
+                exit 1
+              fi
+
+              echo "Lock created: $LOCK_ID"
+
+              while true; do
+                RESP=$(curl -sf "$ARGOLOCKS_URL/api/v1/locks/$LOCK_ID")
+                STATUS=$(echo "$RESP" | sed -n 's/.*"status":"\([^"]*\)".*/\1/p')
+
+                case "$STATUS" in
+                  approved)
+                    echo "Approved"
+                    exit 0
+                    ;;
+                  denied)
+                    echo "Denied"
+                    exit 1
+                    ;;
+                esac
+
+                sleep 5
+              done
